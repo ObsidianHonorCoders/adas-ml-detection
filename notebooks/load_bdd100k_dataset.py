@@ -16,7 +16,7 @@ import argparse
 import random
 import shutil
 from pathlib import Path, PurePosixPath
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile, is_zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,12 +95,18 @@ def copy_sampled_pairs(
         A mapping of split names to numbers of copied image/label pairs.
 
     Raises:
-        ValueError: If any split contains unmatched image or label stems.
+        ValueError: If a split is absent or image and label stems do not match.
     """
     image_members = {split: get_split_files(images_zip, split) for split in SPLITS}
     label_members = {split: get_split_files(labels_zip, split) for split in SPLITS}
 
     for split in SPLITS:
+        if not image_members[split] and not label_members[split]:
+            raise ValueError(
+                f"No image or label files found for the {split} split in the "
+                "ZIP archives."
+            )
+
         image_stems = set(image_members[split])
         label_stems = set(label_members[split])
         if image_stems != label_stems:
@@ -185,15 +191,25 @@ def main() -> None:
     ):
         if not archive_path.is_file():
             parser.error(f"{option} file not found: {archive_path}")
+        if not is_zipfile(archive_path):
+            parser.error(f"{option} is not a valid ZIP archive: {archive_path}")
 
     output_dir = ROOT / "data" / "processed" / "BDD100k"
-    with ZipFile(args.images_zip) as images_zip, ZipFile(args.labels_zip) as labels_zip:
-        copied_counts = copy_sampled_pairs(
-            images_zip,
-            labels_zip,
-            output_dir,
-            RANDOM_SEED,
-        )
+    try:
+        with (
+            ZipFile(args.images_zip) as images_zip,
+            ZipFile(args.labels_zip) as labels_zip,
+        ):
+            copied_counts = copy_sampled_pairs(
+                images_zip,
+                labels_zip,
+                output_dir,
+                RANDOM_SEED,
+            )
+    except BadZipFile as exc:
+        parser.error(f"Unable to read an input ZIP archive: {exc}")
+    except ValueError as exc:
+        parser.error(str(exc))
 
     print(f"BDD100K subset created at: {output_dir}")
     print(f"Total image/label pairs copied: {sum(copied_counts.values())}")

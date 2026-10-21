@@ -29,6 +29,52 @@ SPLIT_RATIOS = {
 SPLIT_SIZES = {split: int(TOTAL_SIZE * ratio) for split, ratio in SPLIT_RATIOS.items()}
 
 
+def load_split(split: str, sample_size: int) -> object:
+    if split not in SPLITS:
+        raise ValueError(f"Unsupported COCO split: {split}")
+    if sample_size < 1:
+        raise ValueError("The COCO split sample size must be positive.")
+
+    kwargs = {
+        "split": split,
+        "label_types": ["detections"],
+        "max_samples": sample_size,
+        "shuffle": True,
+        "seed": RANDOM_SEED,
+        "dataset_name": f"adas_coco_{split}_{sample_size}",
+        "persistent": True,
+    }
+    if split != "test":
+        kwargs["classes"] = ADAS_TARGETS
+        kwargs["only_matching"] = True
+
+    print(f"\nLoading COCO 2017 split: {split}")
+    print(f"Target sample size: {sample_size}")
+    try:
+        dataset = foz.load_zoo_dataset("coco-2017", **kwargs)
+        image_count = dataset.count()
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise RuntimeError(
+            f"Unable to load COCO split '{split}'. Check network access and "
+            "available disk space, then retry."
+        ) from exc
+
+    if not isinstance(image_count, int) or image_count < 1:
+        raise ValueError(
+            f"COCO split '{split}' loaded no images; check dataset availability "
+            "and class filters."
+        )
+    if image_count > sample_size:
+        raise ValueError(
+            f"COCO split '{split}' loaded {image_count} images, exceeding the "
+            f"requested maximum of {sample_size}."
+        )
+
+    print(f"{split}: {image_count} images")
+    print(f"FiftyOne dataset name: {dataset.name}")
+    return dataset
+
+
 def main() -> None:
     project_dir = Path(__file__).resolve().parents[1]
     processed_dir = project_dir / "data" / "processed"
@@ -37,33 +83,9 @@ def main() -> None:
     # Configure where FiftyOne stores downloaded zoo dataset files
     fo.config.dataset_zoo_dir = str(processed_dir)
 
-    datasets = {}
-
     for split in SPLITS:
         sample_size = SPLIT_SIZES[split]
-
-        print(f"\nLoading COCO 2017 split: {split}")
-        print(f"Target sample size: {sample_size}")
-
-        kwargs = {
-            "split": split,
-            "label_types": ["detections"],
-            "max_samples": sample_size,
-            "shuffle": True,
-            "seed": RANDOM_SEED,
-            "dataset_name": f"adas_coco_{split}_{sample_size}",
-            "persistent": True,
-        }
-
-        if split != "test":
-            kwargs["classes"] = ADAS_TARGETS
-            kwargs["only_matching"] = True
-
-        dataset = foz.load_zoo_dataset("coco-2017", **kwargs)
-        datasets[split] = dataset
-
-        print(f"{split}: {dataset.count()} images")
-        print(f"FiftyOne dataset name: {dataset.name}")
+        load_split(split, sample_size)
 
     print("\nFinished loading all splits.")
 

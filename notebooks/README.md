@@ -62,6 +62,13 @@ associated with that split. For train and validation, these include the
 detections loaded for the target classes. The test split has no public
 ground-truth detection annotations.
 
+### Failure handling
+
+The COCO loader reports network or local I/O errors with the affected split
+and checks that each loaded split contains no more than the requested maximum
+and at least one image. If a download fails, check network access and free disk
+space before retrying.
+
 ## BDD100K
 
 ### Inputs and preconditions
@@ -82,7 +89,8 @@ Both ZIP archives must contain files beneath `100k/train`, `100k/val`, and
 `100k/test`. Image and label files must pair by filename stem within the same
 split; for example, `100k/train/frame-id.jpg` pairs with
 `100k/train/frame-id.json`. The script checks that all image and label stems
-match before copying.
+match before copying. It also rejects invalid ZIP archives and archives that
+do not contain files for every expected split, before copying any files.
 
 The current configuration uses a total subset size of 2,000 with 70/10/20
 split ratios. These are per-split maximums; the script copies fewer only if
